@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "creo-elements-direct": {
+      "command": "C:\\caminho\\para\\creo-elements-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "creo_mcp"],
+      "env": {
+        "PYTHONPATH": "C:\\caminho\\para\\creo-elements-mcp\\src"
+      }
+    }
+  }
+}

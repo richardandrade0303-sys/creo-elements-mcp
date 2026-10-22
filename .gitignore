@@ -1,0 +1,29 @@
+# Ambiente e caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Saidas locais do servidor e da delegacao (nao versionar)
+.delegacoes/
+.creo_mcp/
+
+# Modelos e malhas gerados (podem ser grandes ou proprietarios)
+*.stl
+*.pkg
+*.dwg
+*.dxf
+
+# Segredos e configuracao pessoal dos clientes MCP
+.env
+.env.*
+*.pem
+*.key
+mcp_config.json
+claude_desktop_config.json
+# ...mas os modelos de exemplo (com caminhos genericos) ficam no repositorio
+!examples/*.json
