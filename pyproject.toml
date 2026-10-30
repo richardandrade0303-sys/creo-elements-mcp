@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "creo-elements-mcp"
-version = "2.8.0"
-description = "MCP server for PTC Creo Elements/Direct Modeling Express 9.0 (via DDE)"
+version = "3.0.0"
+description = "MCP server for PTC Creo Elements/Direct Modeling (Express 9.0 tested) via DDE"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 # O servidor precisa do SDK `mcp` (versao 2.x: usa mcp.server.mcpserver).
-# Testado com mcp 2.3.0 e Python 3.13/3.14. O DDE so existe no Windows.
+# Testado com mcp 2.3.0 e 2.4.x e Python 3.13/3.14. O DDE so existe no Windows.
 dependencies = ["mcp>=2.3.0"]
 
 [project.optional-dependencies]

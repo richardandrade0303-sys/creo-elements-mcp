@@ -19,6 +19,7 @@ import threading
 import time
 
 from . import dde, winui
+from .state import DDE_LOCK as _LOCK   # a trava mora em state.py: a recarga a quente deste modulo nao a recria
 
 LAYER = "2.1-file-load"
 END_MARK = "#END#"
@@ -27,7 +28,6 @@ SETTLE_AFTER_DIALOG = 6.0  # apos aparecer um dialogo, espera tanto tempo pelo r
 HOME = os.path.join(os.path.expanduser("~"), ".creo_mcp")
 CMD_DIR = os.path.join(HOME, "cmd")
 
-_LOCK = threading.Lock()  # uma conversacao DDE por vez
 
 
 # ----------------------------------------------------------- helpers de Lisp

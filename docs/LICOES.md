@@ -3,9 +3,9 @@
 Tudo aqui saiu de sessões reais com o Creo Elements/Direct Modeling Express 9.0 (Lisp "HCL" 1.0 90.0P1017, camada `2.1-file-load`).
 Cada linha é **sintoma → causa → regra**. O que **não** foi provado está dito com todas as letras, na seção final.
 
-Índice: [Entrada de comandos](#1-entrada-de-comandos) · [Segurança do Creo](#2-segurança-do-creo-o-que-já-travou-ou-derrubou-uma-sessão) ·
+Índice (a seção [11](#11-sessão-do-mancal-bipartido-v3) reúne o que a modelagem do mancal ensinou): [Entrada de comandos](#1-entrada-de-comandos) · [Segurança do Creo](#2-segurança-do-creo-o-que-já-travou-ou-derrubou-uma-sessão) ·
 [Geometria e montagem](#3-geometria-e-montagem) · [STL e verificação](#4-stl-e-verificação) · [Jobs e clientes MCP](#5-jobs-e-clientes-mcp) ·
-[Hélice](#6-hélice-molas-e-roscas) · [Limite de 60 peças](#7-limite-de-60-peças) · [Delegação](#8-delegação-ao-agy) ·
+[Hélice](#6-hélice-molas-e-roscas) · [Peças e o limite do Express](#7-peças-e-o-limite-do-express) · [Delegação](#8-delegação-ao-agy) ·
 [Código e testes](#9-código-e-testes) · [Falhas sem causa provada](#10-falhas-sem-causa-provada)
 
 ## 1. Entrada de comandos
@@ -88,8 +88,8 @@ Cada linha é **sintoma → causa → regra**. O que **não** foi provado está 
 | Sobrou um perfil no workplane | O perfil **fica** no workplane depois do comando | Extrudar numa peça descartável (`/hjunk`, `:keep_profile :no`) e apagar (`recipes.helix_sweep` faz) |
 | Rosca externa não pega | Perfil começa dentro do material | O perfil começa **fora** (z = −P) e a altura do perfil < 0,9 P (`ext = min(0,3; 0,15 P)`) |
 
-## 7. Limite de 60 peças
-Resumo; o guia completo está em [`LIMITE_60_PECAS.md`](LIMITE_60_PECAS.md).
+## 7. Peças e o limite do Express
+O servidor não aplica limite por padrão; `CREO_MCP_PART_LIMIT=60` liga o aviso do Express. Guia: [`CONTAGEM_DE_PECAS.md`](CONTAGEM_DE_PECAS.md).
 
 | Sintoma | Causa | Regra |
 |---|---|---|
@@ -133,3 +133,27 @@ Registradas para quem encontrar o mesmo problema. **Não** há explicação conf
 4. **`cancel_active_command_dialogs`** — nunca foi provada contra um painel de extrusão realmente pendente.
 
 Se você descobrir a causa de qualquer um destes, abra uma issue.
+
+## 11. Sessão do mancal bipartido (v3)
+Tudo abaixo foi observado ao vivo no Express 9.0 ao modelar o [mancal bipartido](EXEMPLO_MANCAL.md) (52 peças, roscas helicoidais).
+
+| Sintoma | Causa | Regra |
+|---|---|---|
+| Creo travou (Lisp sem resposta) logo depois de `sd-get-faces-along-ray` com argumentos adivinhados | Função de consulta de geometria chamada sem a assinatura (**causa exata não isolada**) | O servidor recusa `sd-get-faces-along-ray` em Lisp livre. Para ler o perfil de uma peça, use bbox de peças de teste, `creo_section` + `creo_inspect` ou os parâmetros que você mesmo criou |
+| `creo_restore(path=...)` carregou o snapshot **mais recente** e apagou a cena | O parâmetro certo é `name` (nome do snapshot); `path` era ignorado | Sempre `name`; com peças na cena use `replace=true` (salva a atual antes). Plano B: `LOAD_PACKAGE "C:/.../x.pk2" COMPLETE` por `creo_run_command` numa cena sem peças |
+| `Error 64: The file name is not valid` ao restaurar | Mensagem do carregamento do pacote; a cena foi restaurada mesmo assim | Confira `verify.have_parts == want_parts` no retorno |
+| `helix_dia` falha com "Overlapping loops (Error 291)" na segunda rosca | O perfil da hélice **fica** no workplane depois do comando | Um **workplane novo por rosca** (`create_workplane :new :name wt2`) e `POSITION_WP "/wt2" :PT_PT_PT ...` |
+| Rosca interna em furo paralelo a y ou x: plano de perfil errado | O perfil deve estar no plano que contém o eixo do furo | Plano y=h: pontos (0,h,0) (1,h,0) (0,h,1); plano z=h: (0,0,h) (1,0,h) (0,1,h); ou gire a peça para o furo ficar em z e gire de volta |
+| Volume **subiu** depois de cortar rosca (+194, +508 mm³) | Leitura de volume depois de cortes helicoidais é pouco confiável | Confie na variação de **área** e no corte por seção; não use volume como prova |
+| Rosca M6 em furos do lado x− removeu só ~10 mm³ contra ~35 mm³ no lado x+ | **Causa não encontrada** | Refazer a rosca com perfil novo e conferir por seção; deixe registrado como pendente |
+| `delete_3d` com vários nomes (strings) apaga só o primeiro | Os argumentos seguintes não são lidos | Passe **objetos**: `(dolist (n lista) (let ((o (oli:sd-pathname-to-obj n))) (when o (delete_3d o))))` |
+| `unite_3d` com `:blanks`/`:keep_tool` dá "Tool and Blank are same or sharing" | Palavras-chave erradas | `(unite_3d :blank "/a" :tools "/b" :keep_tools :no)` (blank no singular; tools/keep_tools no plural); `subtract_3d :blanks ... :tools ... :keep_tool :no` |
+| `extrude` numa peça que já existe cria **peças irmãs** (`/p.1`...) em vez de somar | O Creo mantém sólidos disjuntos separados | Extrudar peças-ferramenta e unir depois (`unite_3d`); conte as peças ao final |
+| `creo_validate` e `creo_fasteners` sem argumentos deixaram peças perdidas (`/mcp_exp_*`, `/fix_*`) | Rodavam com padrões e eram cancelados no meio | v3: `creo_validate` exige `confirm=true`; `creo_fasteners` exige `at` ou `positions` |
+| `creo_clash_check` exato passou de 5 min com parafusos roscados | Malhas de ~10 mil triângulos por peça em Python puro | v3: `time_budget_s`; par não terminado volta `interferes: null` |
+| `creo_extrude_profile` com `verify=true` levou >90 s | O STL da cena grande é exportado a cada chamada | Em cenas grandes use `verify=false` e confira o bbox retornado |
+| `creo_extrude_profile` com `axis="y"` extrudou ao longo de z | O gerador desenha contornos (x,y) a partir de `z0` | Para cortador no eixo y: extrude em z e gire 90° em x com `POSITION_PA` ((x,y,z) → (x,−z,y)) |
+| Esfera de rolamento: não há `REVOLVE` | Express não tem revolução | Esfera facetada por discos empilhados (cilindros aninhados a partir do plano médio, 5 níveis para cada lado); declare a facetação |
+| `creo_export fmt=step` falhou ("does not correspond to item of desired type" / "No entities selected") | Comando `STEP_EXPORT` recusado no Express 9.0 | Retestar em edição completa; no Express use STL por peça |
+| A BOM lista as roscas de `creo_holes` como "rosca cosmética" e não mostra as roscas helicoidais feitas à mão | A BOM lê o catálogo e os registros do servidor, não a geometria da peça | Documente a rosca real nas notas da peça (`creo_set_attributes`) |
+| Peças sem material saem com massa 0 na BOM | Material não atribuído | `creo_bom material="steel"` ou `creo_set_attributes` antes |

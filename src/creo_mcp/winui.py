@@ -230,7 +230,171 @@ WM_KEYUP = 0x0101
 DEFAULT_DRAIN = 20.0  # segundos que `dismiss` continua fechando dialogos encadeados
 
 
+# ------------------------------------------------- dialogo de arquivo (Load/Open/Save)
+WM_SETTEXT = 0x000C
+FILE_DIALOG_TITLES = ("load", "open", "save", "save as", "abrir", "carregar", "salvar", "import", "export")
+FILE_BUTTON_LABELS = ("load", "open", "abrir", "carregar", "save", "salvar")
+PENDING_FILL = os.path.join(os.path.expanduser("~"), ".creo_mcp", "dialog_fill.json")
+FILL_RESULT = os.path.join(os.path.expanduser("~"), ".creo_mcp", "dialog_fill_result.json")
+FILL_TTL_S = 180.0
+
+
+def _ancestor_classes(hwnd, stop) -> list[str]:
+    out: list[str] = []
+    _user32.GetParent.argtypes = [wintypes.HWND]
+    _user32.GetParent.restype = wintypes.HWND
+    h = _user32.GetParent(hwnd)
+    n = 0
+    while h and int(h) != int(stop) and n < 12:
+        out.append(_class(h).lower())
+        h = _user32.GetParent(h)
+        n += 1
+    return out
+
+
+def file_dialog_info(win: dict) -> dict:
+    """Controles do dialogo de arquivo com id, classe, texto e pais (para diagnostico)."""
+    _user32.GetDlgCtrlID.argtypes = [wintypes.HWND]
+    rows = []
+    for k in children(win["hwnd"]):
+        rows.append({"hwnd": k["hwnd"], "class": k["class"], "text": k["text"][:60],
+                     "id": int(_user32.GetDlgCtrlID(k["hwnd"])), "visible": bool(_user32.IsWindowVisible(k["hwnd"])),
+                     "parents": _ancestor_classes(k["hwnd"], win["hwnd"])})
+    return {"title": win["title"], "class": win["class"], "controls": rows}
+
+
+def _read_pending() -> dict | None:
+    import json
+
+    try:
+        with open(PENDING_FILL, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not data.get("path"):
+        return None
+    if time.time() - float(data.get("created", 0)) > FILL_TTL_S:
+        return None
+    return data
+
+
+def _write_fill_result(info: dict) -> None:
+    import json
+
+    try:
+        os.makedirs(os.path.dirname(FILL_RESULT), exist_ok=True)
+        with open(FILL_RESULT, "w", encoding="utf-8") as f:
+            json.dump(info, f, ensure_ascii=False, indent=1)
+    except OSError:
+        pass
+
+
+def is_file_dialog(win: dict) -> bool:
+    """Dialogo comum de arquivo: classe #32770 com titulo de abrir/salvar e um campo Edit."""
+    if win.get("class") != "#32770":
+        return False
+    if (win.get("title") or "").strip().lower() not in FILE_DIALOG_TITLES:
+        return False
+    return any(k["class"].lower() == "edit" for k in children(win["hwnd"]))
+
+
+def _dblclick_first_item(win: dict, x: int = 30, y: int = 12) -> bool:
+    """Duplo clique (mensagens de mouse) no primeiro item da lista de arquivos do dialogo."""
+    lists = [k for k in children(win["hwnd"]) if k["class"].lower() == "syslistview32" and _user32.IsWindowVisible(k["hwnd"])]
+    if not lists:
+        return False
+    h = lists[0]["hwnd"]
+    lp = (y << 16) | x
+    for msg, wp in ((0x0201, 1), (0x0202, 0), (0x0203, 1), (0x0202, 0)):   # DOWN, UP, DBLCLK, UP
+        _user32.PostMessageW(h, msg, wp, lp)
+        time.sleep(0.05)
+    return True
+
+
+def fill_file_dialog(win: dict, path: str, press: bool = True, mode: str = "text") -> dict:
+    """Digita `path` no campo 'File name' e aperta Load/Open/Save (mode 'text'); com mode 'dblclick' digita e depois da duplo
+    clique no primeiro item da lista. Devolve o relatorio (tambem gravado em FILL_RESULT)."""
+    kids = children(win["hwnd"])
+    edits = [k for k in kids if k["class"].lower() == "edit" and _user32.IsWindowVisible(k["hwnd"])]
+    best = None
+    for k in edits:
+        if any(c.startswith("combobox") for c in _ancestor_classes(k["hwnd"], win["hwnd"])):
+            best = k
+            break
+    if best is None and edits:
+        best = edits[0]
+    report: dict = {"ok": False, "path": path, "title": win["title"], "edits": len(edits)}
+    if best is None:
+        report["error"] = "campo 'File name' nao encontrado"
+        report["info"] = file_dialog_info(win)
+        _write_fill_result(report)
+        return report
+    if mode == "dblclick_only":          # so seleciona na lista (sem digitar): o nome vem do proprio dialogo
+        report["ok"] = _dblclick_first_item(win)
+        report["button"] = "duplo clique no 1o item (sem digitar)"
+        time.sleep(0.3)
+        report["after_text"] = _text(best["hwnd"])
+        _write_fill_result(report)
+        return report
+    buf = ctypes.create_unicode_buffer(path)
+    res = ctypes.c_size_t(0)
+    _user32.SendMessageTimeoutW(best["hwnd"], WM_SETTEXT, 0, ctypes.addressof(buf), SMTO_ABORTIFHUNG, 2000, ctypes.byref(res))
+    time.sleep(0.2)
+    got = _text(best["hwnd"])
+    report["typed"] = got
+    buttons = [k for k in kids if "button" in k["class"].lower()]
+    target = None
+    for k in buttons:
+        if k["text"].replace("&", "").strip().lower() in FILE_BUTTON_LABELS:
+            target = k
+            break
+    report["button"] = target["text"] if target else None
+    if got.replace("\\", "/") != path.replace("\\", "/"):
+        report["error"] = "o texto digitado nao confere com o caminho"
+        report["info"] = file_dialog_info(win)
+        _write_fill_result(report)
+        return report
+    if press and mode == "dblclick":
+        report["ok"] = _dblclick_first_item(win)
+        report["button"] = "duplo clique no 1o item"
+    elif press and target is not None:
+        _user32.PostMessageW(target["hwnd"], BM_CLICK, 0, 0)
+        report["ok"] = True
+    elif press:
+        _user32.PostMessageW(win["hwnd"], 0x0111, 1, 0)  # WM_COMMAND IDOK
+        report["ok"] = True
+        report["button"] = "IDOK"
+    else:
+        report["ok"] = True
+    report["info"] = file_dialog_info(win)
+    _write_fill_result(report)
+    return report
+
+
+def _consume_pending_fill(win: dict) -> str | None:
+    """Se houver pedido de preenchimento valido e `win` for um dialogo de arquivo, preenche e apaga o pedido."""
+    data = _read_pending()
+    if not data or not is_file_dialog(win):
+        return None
+    wanted = [str(t).lower() for t in data.get("titles", [])]
+    if wanted and (win.get("title") or "").strip().lower() not in wanted:
+        return None
+    try:
+        os.remove(PENDING_FILL)
+    except OSError:
+        pass
+    rep = fill_file_dialog(win, str(data["path"]), press=bool(data.get("press", True)), mode=str(data.get("mode", "text")))
+    return ("preencheu o dialogo de arquivo e apertou '%s'" % rep.get("button")) if rep.get("ok") else ("falha: %s" % rep.get("error"))
+
+
 def _click_ok(win: dict) -> str:
+    if IS_WINDOWS:
+        done = _consume_pending_fill(win)
+        if done:
+            return done
+        if is_file_dialog(win):        # sem pedido de preenchimento: fecha (Cancel faz o Creo reabrir o dialogo em laco; IDOK confirma)
+            _user32.PostMessageW(win["hwnd"], WM_CLOSE, 0, 0)
+            return "fechou o dialogo de arquivo (WM_CLOSE)"
     kids = children(win["hwnd"])
     buttons = [k for k in kids if "button" in k["class"].lower()]
 

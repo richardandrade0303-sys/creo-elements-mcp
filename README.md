@@ -1,12 +1,14 @@
 # Creo Elements/Direct MCP
 
 Servidor [MCP](https://modelcontextprotocol.io) em Python que deixa um assistente de IA (Claude Desktop, Claude Code,
-Antigravity ou qualquer cliente MCP via stdio) **modelar em 3D dentro do PTC Creo Elements/Direct Modeling Express 9.0**.
-Ele fala com o Creo pelo servidor DDE nativo (serviço `PESD`, tópico `GENERAL`), usando só `ctypes`: sem ponte em Lisp,
-sem caixa de correio de arquivos, sem dependência além do SDK `mcp`.
+Antigravity ou qualquer cliente MCP via stdio) **modelar em 3D dentro do PTC Creo Elements/Direct Modeling**.
+Ele fala com o Creo pelo servidor DDE nativo (serviço `PESD`, tópico `GENERAL`), usando só `ctypes`, sem dependência além do SDK `mcp`.
+Versão **3.0.0**: 64 ferramentas, com proteções contra os erros que já travaram o Creo em sessões reais.
 
 > **Aviso.** Projeto independente, sem vínculo com a PTC. "Creo" e "Creo Elements/Direct" são marcas da PTC.
-> Só foi testado com o **Express 9.0 no Windows**. Veja [Limitações conhecidas](#limitações-conhecidas) antes de usar em trabalho que importa.
+> Só foi testado com o **Express 9.0 no Windows**. Em uma edição com licença completa **ainda não foi testado**: siga o roteiro de
+> [`docs/TESTE_LICENCA_COMPLETA.md`](docs/TESTE_LICENCA_COMPLETA.md) e abra uma issue com o resultado. Veja
+> [Limitações conhecidas](#limitações-conhecidas) antes de usar em trabalho que importa.
 
 [English version](README.en.md)
 
@@ -17,7 +19,7 @@ sem caixa de correio de arquivos, sem dependência além do SDK `mcp`.
 4. [Primeira sessão](#primeira-sessão)
 5. [Ferramentas](#ferramentas)
 6. [Catálogo de peças](#catálogo-de-peças)
-7. [Limite de 60 peças do Express](#limite-de-60-peças-do-express)
+7. [Quantidade de peças (sem limite por padrão)](#quantidade-de-peças-sem-limite-por-padrão)
 8. [Como funciona por dentro](#como-funciona-por-dentro)
 9. [Regras que evitam travar o Creo](#regras-que-evitam-travar-o-creo)
 10. [Delegação opcional (agy / Gemini)](#delegação-opcional-agy--gemini)
@@ -39,15 +41,17 @@ Você descreve a peça em linguagem natural e o assistente chama as ferramentas.
 
 Cobertura: catálogo de **27 peças industriais** com verificação automática (bbox exato + volume do STL contra o
 valor analítico), perfis livres extrudados, booleanas, chanfro e filete, casca, hélice (molas e roscas reais), montagens
-por coordenadas, nós `:ASSEMBLY`, cor RGB, mover/girar peças, seção, espelho, varredura, volume/massa exatos e Lisp livre.
+por coordenadas, nós `:ASSEMBLY`, cor RGB, mover/girar peças, seção, espelho, varredura, volume/massa exatos e Lisp livre (com guarda).
+Na v3: parafusos/rolamentos/perfis/transmissões normalizados, furos tipados, lista de materiais, snapshots, auditoria de cena, checagem
+de interferência, exportação com manifesto SHA-256, jornal de chamadas e relatórios.
 
 ## Requisitos
 | Item | Versão / observação |
 |---|---|
 | Sistema | **Windows** (o DDE só existe nele) |
-| Creo | **Creo Elements/Direct Modeling Express 9.0**, aberto durante o uso ([página da PTC](https://www.ptc.com/pt/products/cad/elements-direct/modeling/express)) |
+| Creo | **Creo Elements/Direct Modeling** (Express 9.0 testado), aberto durante o uso ([página da PTC](https://www.ptc.com/pt/products/cad/elements-direct/modeling/express)) |
 | Python | 3.10 ou superior (testado com 3.13 e 3.14) |
-| SDK MCP | `mcp>=2.3.0` (usa `mcp.server.mcpserver`; testado com 2.3.0) |
+| SDK MCP | `mcp>=2.3.0` (usa `mcp.server.mcpserver`; testado com 2.3.0 e 2.4.x) |
 | Cliente MCP | Um por vez: Claude Desktop **ou** Claude Code **ou** Antigravity (veja [Regras](#regras-que-evitam-travar-o-creo)) |
 | Delegação (opcional) | Node.js + o script `delegar-gemini.mjs` e o Antigravity CLI (`agy`) ou Gemini CLI. Não fazem parte deste repositório |
 
@@ -112,7 +116,7 @@ Para liberar sem pedir aprovação a cada uso, a regra é `mcp(creo-elements-dir
 ### 4. Confira
 Com o Creo aberto, peça ao assistente: **"chame `creo_get_status`"**. O esperado:
 ```json
-{ "server_version": "2.8.0", "lisp_layer": "2.1-file-load", "state": "ready", "...": "..." }
+{ "server_version": "3.0.0", "lisp_layer": "2.1-file-load", "state": "ready", "...": "..." }
 ```
 Se vier outro `state`, vá para [Solução de problemas](#solução-de-problemas). Depois rode `creo_self_test` uma vez por sessão.
 
@@ -132,16 +136,19 @@ Um fluxo seguro, **um passo por chamada**, lendo `ok`, `error` e `dialogs` antes
    (veja [lições](docs/LICOES.md)). A pasta de destino precisa existir.
 
 ## Ferramentas
-O servidor registra **24 ferramentas**.
+O servidor registra **64 ferramentas**. A descrição completa de cada uma (parâmetros e avisos) vem do próprio servidor MCP.
 
 | Grupo | Ferramentas |
 |---|---|
-| Estado | `creo_get_status`, `creo_self_test`, `creo_screenshot`, `creo_dismiss_dialogs` |
-| Lisp e comandos | `creo_execute_lisp`, `creo_run_command`, `creo_cancel_command`, `creo_lisp_apropos`, `creo_dde_raw` |
-| Consulta | `creo_get_model_tree` (árvore), `creo_get_part_info` (bounding box global) |
-| Modelagem básica | `creo_create_block`, `creo_create_cylinder`, `creo_boolean` (unite / subtract / intersect), `creo_export_stl`, `creo_clear_scene` |
-| Peças industriais | `creo_build_part` (catálogo de 27; `kind="list"` é a fonte da verdade), `creo_extrude_profile` (contornos livres), `creo_job_status` |
-| Acabamento | `creo_edge_treatment` (chanfro simétrico/assimétrico, filete), `creo_shell` (casca) |
+| Estado e saúde | `creo_get_status`, `creo_self_test`, `creo_health`, `creo_lease`, `creo_capabilities`, `creo_units`, `creo_screenshot`, `creo_dismiss_dialogs`, `creo_cancel_command` |
+| Lisp e comandos (com guarda) | `creo_execute_lisp`, `creo_run_command`, `creo_lisp_apropos`, `creo_dde_raw` (desligada por padrão) |
+| Consulta e medição | `creo_get_model_tree`, `creo_get_part_info`, `creo_inspect`, `creo_measure`, `creo_audit_scene`, `creo_part_budget`, `creo_clash_check`, `creo_mesh_qa` |
+| Modelagem | `creo_create_block`, `creo_create_cylinder`, `creo_extrude_profile`, `creo_boolean`, `creo_edge_treatment`, `creo_shell`, `creo_section`, `creo_mirror`, `creo_transform`, `creo_holes`, `creo_sweep_path` (experimental) |
+| Peças e componentes | `creo_build_part` (catálogo de 27), `creo_profile_std`, `creo_frame`, `creo_pipe`, `creo_fasteners`, `creo_bearing_std`, `creo_transmission`, `creo_fit` (ISO 286), `creo_pattern`, `creo_variants` |
+| Montagens e dados | `creo_build_assembly`, `creo_group`, `creo_color`, `creo_set_attributes`, `creo_bom` |
+| Segurança da cena | `creo_snapshot`, `creo_restore`, `creo_clear_scene`, `creo_journal`, `creo_replay`, `creo_validate` |
+| Jobs e lote | `creo_job_status`, `creo_job_cancel`, `creo_batch` |
+| Exportação e relatórios | `creo_export` (STL por peça, STEP/SAT experimentais), `creo_export_stl`, `creo_import` (experimental), `creo_report`, `creo_views` |
 | Delegação (não usa o Creo) | `delegar_agy`, `delegar_resultado`, `delegar_diagnostico` |
 
 Pontos que costumam confundir:
@@ -191,48 +198,15 @@ volume do STL contra o analítico; círculos tesselados perdem ~2 %, fio redondo
 | `flanged_joint` | 2 flanges, junta, N parafusos e N porcas (11 com N = 4) | 11 |
 | `roller_bearing` | Rolamento de rolos (2 anéis + `rollers` rolos; 12 por padrão) | 14 |
 
-A última coluna importa por causa do [limite de 60 peças](#limite-de-60-peças-do-express): um único rolamento de rolos já
-ocupa 14 das 60.
+A última coluna importa para quem usa o Express (limite de 60 peças, veja [Quantidade de peças](#quantidade-de-peças-sem-limite-por-padrão)): um único rolamento de rolos já ocupa 14.
 
-## Limite de 60 peças do Express
-O **Creo Elements/Direct Modeling Express** é a edição gratuita. Segundo a [própria PTC](https://www.ptc.com/pt/products/cad/elements-direct/modeling/express),
-ela permite montagens com **até 60 peças únicas**; a versão completa não tem esse teto. Este projeto **não contorna** a licença:
-ele ensina a trabalhar dentro do limite e, se você precisa de mais, o caminho é uma edição licenciada.
+## Quantidade de peças (sem limite por padrão)
+**O servidor não limita o número de peças.** O teto de 60 peças únicas é da edição gratuita (Express) do Creo; a edição completa não
+tem esse teto ([PTC](https://www.ptc.com/pt/products/cad/elements-direct/modeling/express)). Usando o Express, defina no ambiente do
+servidor `CREO_MCP_PART_LIMIT=60` para ligar o aviso e a recusa antes de construir; `0` ou ausente = sem limite.
 
-### O que acontece ao passar de 60
-Nas sessões do projeto o Creo mostrou uma caixa modal ao **salvar o pacote** (`save_package`) com mais de 60 corpos sólidos:
-*"You have exceeded the 60 part limit of the Express version (NN parts)."* A cena em si chegou a ter 66 peças antes de salvar
-(a caixa aparece no salvamento). Não foi verificado se o limite também bloqueia outras operações.
-
-### O que conta como "peça"
-Cada objeto `:PART` na raiz do modelo. Para contar:
-```
-creo_get_model_tree(depth=1)   →   conte as entradas do tipo :PART  (workplanes são :WP; com :ASSEMBLY use depth=2 ou mais)
-```
-Faça isso **antes e depois** de cada etapa grande. Não foi verificado se o Creo desconta peças idênticas ("únicas" no texto da PTC);
-trate cada `:PART` como uma peça.
-
-### De onde vêm peças a mais
-| Causa | Como evitar |
-|---|---|
-| Peças do catálogo com vários corpos (`roller_bearing` = 14, `flanged_joint` = 11, `bench_vise` = 7) | Some o custo antes de pedir; reduza `rollers`, `bolts`, etc. quando a peça é só figurativa |
-| Montagem "por coordenadas": cada corpo é uma peça própria | Funda (`unite`) só o que **não** precisa se mexer |
-| `unite` entre sólidos que **não se tocam**: o Creo não funde e deixa corpos separados (`/p.1`, `/p.2`...) | Garanta contato/interseção antes de unir; confira `objects_now` |
-| Contornos disjuntos num `creo_extrude_profile` viram várias peças-ferramenta (`/cuttool`, `/cuttool.1`...) | O servidor subtrai todas e apaga as sobras; **sinal de alerta**: objetos `/cuttool.N` na árvore |
-| Peças de teste esquecidas na cena | Apague com `delete_3d` ou `creo_clear_scene` entre testes |
-
-### Estratégias para ficar abaixo de 60
-1. **Orçamento de peças.** Antes de modelar, liste os corpos e some (use a tabela do [catálogo](#catálogo-de-peças)).
-2. **Funda por contato.** Pino + placas + rolete de um mesmo elo que se interceptam viram **um** sólido contínuo. Em dois conjuntos
-   relatados nas sessões do projeto (uma corrente articulada de ~393 mm, que passou de 66 para menos de 60 peças, e uma bacia com
-   canaletas e grades, com 15 peças), essa foi a solução. Esses relatos não foram reverificados ao vivo.
-3. **Não funda peças que precisam se mover entre si.** Unir peças tangentes de um mecanismo destrói a cinemática; nesse caso
-   simplifique (menos rolos, menos elos modelados) em vez de fundir.
-4. **Divida em subconjuntos.** Modele e exporte (STL por peça ou pacote) cada subconjunto numa sessão e junte o resultado fora do Creo.
-5. **Precisa de mais de 60 peças reais num único modelo?** Use uma edição licenciada do Creo Elements/Direct Modeling. O servidor usa
-   os mesmos comandos Lisp e o mesmo DDE, mas **só foi testado no Express 9.0**.
-
-Mais detalhes, exemplos de contagem e a lista do que foi (e não foi) verificado: [`docs/LIMITE_60_PECAS.md`](docs/LIMITE_60_PECAS.md).
+`creo_part_budget` mostra quantas peças existem e, com o limite ligado, quantas sobram. Contagem, origem de peças a mais
+(`/cuttool.N`, `/p1.1`, cortes de seção) e dicas: [`docs/CONTAGEM_DE_PECAS.md`](docs/CONTAGEM_DE_PECAS.md).
 
 ## Como funciona por dentro
 1. O Creo roda Common Lisp ("HCL") com o Integration Kit (pacote `OLI`). `(oli:sd-dde-enable :on)` liga o servidor DDE `PESD/GENERAL`.
@@ -251,12 +225,15 @@ Cada regra abaixo já travou ou derrubou uma sessão de verdade (as causas e os 
 - **Mudou `server.py` ou `delegar.py`?** Feche o cliente por completo (Claude Desktop: ícone da bandeja) e abra de novo.
 - **Um passo por chamada**, conferindo `ok`, `error`, `dialogs` e o efeito (bbox/árvore) antes do próximo.
 - **Nunca invente nome de função.** Rode `creo_lisp_apropos` antes. Símbolo inventado abre uma cadeia de diálogos de erro.
-- **Nunca introspecte funções OLI** (`documentation`, `function-lambda-expression`, `describe`): estouro de pilha fatal derruba o Creo.
+- **Nunca introspecte funções OLI** (`documentation`, `function-lambda-expression`, `describe`): estouro de pilha fatal derruba o Creo. Desde a v3 o servidor **recusa** isso (e `quit`/`exit`) em `creo_execute_lisp`, `creo_run_command` e `creo_dde_raw` antes de enviar ([`safety.py`](src/creo_mcp/safety.py)); liberar por conta e risco: `CREO_MCP_ALLOW_RISKY_LISP=1`.
 - **`extrude` sempre com `:keep_profile :no`**, senão o perfil 2D antigo é extrudado de novo (alturas erradas, "Overlapping loops (Error 291)"). As receitas já fazem isso.
 - **Nunca feche janelas do Creo com `WM_CLOSE`** que não sejam diálogos `#32770` (o "Draw Panel" da extrusão trava o Creo numa cadeia infinita).
 - **Hélice (`HELIX_DIA`): o passo tem de ser maior que a altura do perfil** (≥ 1,02×). Passo menor dá `Sweep body contains self-intersecting surfaces` em laço e o Creo pode fechar sozinho. O servidor recusa o plano antes de enviar.
 - **`sd-defdialog` nunca com variável `:part`**: o nome digitado é ignorado e vale a peça corrente.
 - **Não "monte" com `unite`**: gere cada peça já na posição final (x, y, z).
+- **Estado `degraded`**: depois de 3 falhas seguidas de DDE o servidor recusa Lisp livre e passos que alteram a cena. Peça ao usuário para reiniciar o Creo; `creo_get_status` (sonda inofensiva) limpa o estado quando o Creo responde; depois `creo_restore` (pelo **nome** do snapshot).
+- **`creo_validate` pede `confirm=true`** e `creo_fasteners` exige `at` ou `positions`: sem isso ficavam peças perdidas na cena.
+- **`creo_clash_check` exato tem orçamento de tempo** (`time_budget_s`, padrão 240): pares de malhas enormes (roscas helicoidais) voltam como `interferes: null`, nunca como "sem interferência".
 - **Se o mesmo diálogo voltar depois de 2 limpezas, pare** e peça ao usuário para fechar e reabrir o Creo.
 
 ## Delegação opcional (agy / Gemini)
@@ -297,7 +274,8 @@ Resumo (detalhes, códigos de saída e limites em [`docs/DELEGACAO.md`](docs/DEL
 | "Illegal call to action routine" | `get_selection`, `GET_VOL_PROP`, `SECTION`, `MIRROR_3D`... fora de uma ação de usuário | Encapsule num `sd-defdialog` chamado por `sd-put-buffer "NOME COMPLETE"` |
 | "positions are equal" | Polígono com dois vértices consecutivos iguais | Remova pontos repetidos (distância < 1e-4 mm) antes de `polygon` |
 | "Cannot find the external symbol ..." | Nome de função inventado | `creo_lisp_apropos` |
-| Caixa de 60 peças | Limite da edição Express | [Seção dedicada](#limite-de-60-peças-do-express) |
+| Caixa de 60 peças | Limite da edição Express | [Quantidade de peças](#quantidade-de-peças-sem-limite-por-padrão); só o Express tem o limite |
+| `estado degraded` / `recusado antes de enviar ao Creo` | Falhas seguidas de DDE, ou Lisp na lista de bloqueio | Reinicie o Creo, chame `creo_get_status`, depois `creo_restore` pelo **nome**; veja [Regras](#regras-que-evitam-travar-o-creo) |
 | Mesmo diálogo volta depois do Ok | Painel de ferramenta ainda aberto reabre o erro | Depois de 2 limpezas, pare e reinicie o Creo |
 
 Logs: `%USERPROFILE%\.creo_mcp\logs\server.log`.
@@ -305,10 +283,13 @@ Logs: `%USERPROFILE%\.creo_mcp\logs\server.log`.
 ## Limitações conhecidas
 Honestas e atuais; o que não foi provado está marcado como tal.
 
-- **Só testado no Express 9.0 e no Windows.** Outras versões do Creo Elements/Direct e a edição licenciada não foram testadas.
+- **Só testado no Express 9.0 e no Windows.** Outras versões do Creo Elements/Direct e a edição com licença completa não foram testadas: [`docs/TESTE_LICENCA_COMPLETA.md`](docs/TESTE_LICENCA_COMPLETA.md).
 - **Express 9.0 não tem** os módulos Annotation (desenho 2D) e Sheet Metal, nem `REVOLVE`, nem ângulo de saída (draft) no `EXTRUDE`.
   Peças de revolução viram pilhas de cilindros (`stepped_shaft`) ou polígonos densos; não dá para imitar revolução com hélice.
-- **Limite de 60 peças** (veja a [seção](#limite-de-60-peças-do-express)).
+- **Limite de 60 peças** só existe no Express; o servidor não o aplica por padrão (`CREO_MCP_PART_LIMIT=60` liga).
+- **Roscas helicoidais** (`HELIX_DIA`): a leitura de volume depois de cortes helicoidais é pouco confiável (pode até subir); use a variação de **área** e o corte por seção para conferir o encaixe. Cortes de rosca interna em furos fora do eixo z podem sair fracos; veja [`docs/EXEMPLO_MANCAL.md`](docs/EXEMPLO_MANCAL.md).
+- **STEP**: `creo_export fmt=step` falhou no Express 9.0 (o comando recusou as três sintaxes tentadas). Numa edição completa deve ser retestado.
+- **`creo_clash_check` exato** em peças roscadas é lento (malhas de ~10 mil triângulos por parafuso); use `parts` para poucos pares e `time_budget_s`.
 - **STL**: com vários nomes em `:PARTS_ASSEMBLIES` só o primeiro objeto é exportado. Exporte **um arquivo por peça**
   (a docstring de `creo_export_stl` ainda diz que aceita vários nomes; na prática só o primeiro sai). Círculos saem tesselados.
 - **Falha de STL sem causa conhecida**: em um conjunto de oito peças feito por uma cadeia longa de chamadas, quatro peças recusaram
@@ -327,7 +308,7 @@ Honestas e atuais; o que não foi provado está marcado como tal.
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 .venv\Scripts\python.exe -m pytest
 ```
-109 testes **offline** (não precisam do Creo): geração dos planos e do Lisp, receitas, leitura de STL, diálogos simulados, execução
+196 testes **offline** (não precisam do Creo): geração dos planos e do Lisp, receitas, leitura de STL, diálogos simulados, execução
 com um Creo falso, e toda a delegação com `node` e script falsos. Passam em Linux (verificado na preparação do pacote) e no Windows
 (onde o projeto é desenvolvido); o código de DDE e de janelas só é chamado no Windows.
 O teste ao vivo exige o Creo aberto com o DDE ligado.
@@ -338,7 +319,13 @@ Ao adicionar parâmetro a um gerador de peças, ponha-o **no fim** da assinatura
 ## Estrutura do repositório
 ```
 src/creo_mcp/
-  server.py     ferramentas MCP (24) e instruções para o modelo
+  server.py     núcleo MCP, ferramentas base e instruções para o modelo
+  tools_ext.py  ferramentas v3 (snapshot, BOM, furos, fixadores, rolamentos, clash, validate...)
+  safety.py     guarda de Lisp: recusa introspecção e formas que já travaram o Creo
+  actions.py    ações compostas (auditoria, clash, BOM, importação...)
+  scene.py      leitura da árvore, orçamento de peças (limite opcional)
+  snapshot.py   pontos de restauração (.pk2)   health.py / lease.py   saúde e trava entre clientes
+  hardware.py, profiles.py, transmission.py, library.py, fits.py   normas (parafusos, perfis, rolamentos, polias, ISO 286)
   dde.py        cliente DDE em ctypes (serviço PESD, tópico GENERAL)
   lisp.py       execução de Lisp: arquivo .lsp + resultado .out, vigia de diálogos
   winui.py      janelas do Creo: diálogos #32770, painéis de ferramenta, screenshot
@@ -349,14 +336,16 @@ src/creo_mcp/
   delegar.py    delegação opcional ao agy / Gemini
 tests/          testes offline
 examples/       sd_customize.lsp e modelos de configuração dos clientes MCP
-docs/           lições aprendidas, receitas Lisp, limite de 60 peças, delegação, exemplo de modelagem
+docs/           lições aprendidas, receitas Lisp, contagem de peças, delegação, exemplos, teste em licença completa
 scripts/        start_server.bat (depuração manual)
 ```
 
 ## Documentação adicional
 - [`docs/LICOES.md`](docs/LICOES.md) — erros, causas e regras (o que já travou o Creo e por quê)
 - [`docs/RECEITAS_LISP.md`](docs/RECEITAS_LISP.md) — receitas Lisp verificadas ao vivo
-- [`docs/LIMITE_60_PECAS.md`](docs/LIMITE_60_PECAS.md) — guia do limite de 60 peças
+- [`docs/CONTAGEM_DE_PECAS.md`](docs/CONTAGEM_DE_PECAS.md) — contagem de peças e o limite opcional do Express
+- [`docs/TESTE_LICENCA_COMPLETA.md`](docs/TESTE_LICENCA_COMPLETA.md) — roteiro para testar em outros computadores com licença completa
+- [`docs/EXEMPLO_MANCAL.md`](docs/EXEMPLO_MANCAL.md) — mancal bipartido com eixo, rolamentos, roscas e lista de materiais
 - [`docs/DELEGACAO.md`](docs/DELEGACAO.md) — como funciona a delegação ao agy / Gemini
 - [`docs/EXEMPLO_CANHAO.md`](docs/EXEMPLO_CANHAO.md) — exemplo completo: conjunto de 8 corpos com peças de revolução
 
