@@ -3,7 +3,7 @@
 Um exemplo de ponta a ponta com o que o servidor faz bem e com o que o Express 9.0 não faz (revolução). O modelo foi feito a partir de um
 desenho A4 de terceiros (não incluído aqui), **8 etapas, uma ferramenta por chamada, com o bbox esperado conferido a cada passo**. Na
 sessão real, cada etapa foi delegada a um agente (`delegar_agy`, ~44 min no total); as mesmas chamadas funcionam digitadas por você ou por
-qualquer assistente. O conjunto ocupa **8 peças** (veja o [limite de 60](LIMITE_60_PECAS.md)).
+qualquer assistente. O conjunto ocupa **8 peças** (sem limite por padrão; veja [CONTAGEM_DE_PECAS.md](CONTAGEM_DE_PECAS.md)).
 
 > Estado honesto: o bbox de cada peça foi conferido e a árvore ficou sem peças-ferramenta sobrando, mas o **volume não foi medido**
 > (a exportação do STL falhou nessas peças; veja a seção 10 de [`LICOES.md`](LICOES.md)).

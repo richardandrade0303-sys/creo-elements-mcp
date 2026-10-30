@@ -245,8 +245,12 @@ def _run_plan_impl(plan: parts.Plan, runner, verify: bool = True) -> dict:
                     os.remove(path)
             except OSError:
                 pass
-            runner(recipes.export_stl(path, ",".join("/" + x for x in plist), True), 30)
-            settle(45.0, until=lambda p=path: os.path.exists(p))
+            for attempt in (1, 2):
+                runner(recipes.export_stl(path, ",".join("/" + x for x in plist), True), 30)
+                settle(45.0 if attempt == 1 else 30.0, until=lambda p=path: os.path.exists(p))
+                if os.path.exists(path):
+                    break
+                runner(recipes.cancel_command(), 15)       # o 414 do export anterior deixa o comando STL pendente
             if os.path.exists(path):
                 time.sleep(0.6)
                 try:

@@ -6,6 +6,7 @@ medidos com os valores analiticos esperados.
 
 from __future__ import annotations
 
+import math
 import re
 import struct
 
@@ -68,3 +69,115 @@ def read_stl(path: str) -> dict:
         "bbox_max": [round(v, 4) for v in hi],
         "size": [round(h - l, 4) for l, h in zip(lo, hi)],
     }
+
+
+# ------------------------------------------------------------------ malha: carga e controle de qualidade
+def load_triangles(path: str) -> list:
+    """Lista de triangulos ((x,y,z),(x,y,z),(x,y,z)) de um STL binario ou ASCII."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    is_binary = len(data) >= 84 and len(data) == 84 + 50 * struct.unpack("<I", data[80:84])[0]
+    tris = _triangles_binary(data) if is_binary else _triangles_ascii(data.decode("utf-8", "replace"))
+    return [(tuple(a), tuple(b), tuple(c)) for a, b, c in tris]
+
+
+def analyze_triangles(tris: list, weld: float = 1e-4) -> dict:
+    """Controle de qualidade de uma malha: estanque (watertight), arestas abertas/nao-manifold, orientacao, triangulos
+    degenerados ou repetidos, numero de cascas, caracteristica de Euler e volume assinado.
+
+    Um STL exportado de um solido valido deve sair estanque, com 1 casca por solido e volume assinado positivo.
+    """
+    ids: dict = {}
+    verts: list = []
+
+    def vid(p):
+        k = (round(p[0] / weld), round(p[1] / weld), round(p[2] / weld))
+        i = ids.get(k)
+        if i is None:
+            i = ids[k] = len(verts)
+            verts.append(p)
+        return i
+
+    edges: dict = {}                    # (a, b) a<b -> [sentido +1 / -1, ...]
+    seen: dict = {}
+    degenerate = duplicate = 0
+    signed = area = 0.0
+    parent: dict = {}
+
+    def find(x):
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    worst = 0.0
+    shortest = float("inf")
+    longest = 0.0
+    for a, b, c in tris:
+        ia, ib, ic = vid(a), vid(b), vid(c)
+        ar = _tri_area(a, b, c)
+        if len({ia, ib, ic}) < 3 or ar < 1e-12:
+            degenerate += 1
+            continue
+        key = tuple(sorted((ia, ib, ic)))
+        if key in seen:
+            duplicate += 1
+            continue
+        seen[key] = True
+        signed += _tri_volume(a, b, c)
+        area += ar
+        for u, v in ((ia, ib), (ib, ic), (ic, ia)):
+            edges.setdefault((min(u, v), max(u, v)), []).append(1 if u < v else -1)
+        for u, v in ((ia, ib), (ib, ic)):
+            ru, rv = find(u), find(v)
+            if ru != rv:
+                parent[ru] = rv
+        lens = [math.dist(a, b), math.dist(b, c), math.dist(c, a)]
+        shortest = min(shortest, min(lens))
+        longest = max(longest, max(lens))
+        worst = max(worst, max(lens) ** 2 / (4 * math.sqrt(3) * ar))
+    boundary = sum(1 for d in edges.values() if len(d) == 1)
+    nonmanifold = sum(1 for d in edges.values() if len(d) > 2)
+    flipped = sum(1 for d in edges.values() if len(d) == 2 and d[0] == d[1])
+    shells = len({find(i) for i in range(len(verts))}) if verts else 0
+    faces = len(seen)
+    euler = len(verts) - len(edges) + faces
+    watertight = bool(faces) and boundary == 0 and nonmanifold == 0
+    out = {"triangles": len(tris), "unique_triangles": faces, "vertices": len(verts), "edges": len(edges),
+           "degenerate_triangles": degenerate, "duplicate_triangles": duplicate, "open_edges": boundary,
+           "non_manifold_edges": nonmanifold, "inconsistent_orientation_edges": flipped, "shells": shells,
+           "watertight": watertight, "euler_characteristic": euler, "signed_volume_mm3": round(signed, 3),
+           "area_mm2": round(area, 3), "volume_mm3": round(abs(signed), 3)}
+    if faces:
+        out["edge_length_mm"] = {"min": round(shortest, 5), "max": round(longest, 4)}
+        out["worst_aspect_ratio"] = round(worst, 2)
+    if watertight and shells:
+        out["genus_estimate"] = max(0, round((2 * shells - euler) / 2))
+    problems = []
+    if not faces:
+        problems.append("malha vazia")
+    if boundary:
+        problems.append(f"{boundary} arestas abertas (a malha nao fecha)")
+    if nonmanifold:
+        problems.append(f"{nonmanifold} arestas compartilhadas por mais de 2 triangulos")
+    if flipped:
+        problems.append(f"{flipped} arestas com orientacao inconsistente")
+    if degenerate:
+        problems.append(f"{degenerate} triangulos degenerados")
+    if duplicate:
+        problems.append(f"{duplicate} triangulos repetidos")
+    if watertight and signed < 0:
+        problems.append("volume assinado negativo: normais para dentro")
+    out["problems"] = problems
+    out["ok"] = not problems
+    return out
+
+
+def analyze(path: str, weld: float = 1e-4, max_triangles: int = 600000) -> dict:
+    tris = load_triangles(path)
+    if len(tris) > max_triangles:
+        return {"ok": False, "triangles": len(tris), "problems": [f"malha com {len(tris)} triangulos: acima do limite de "
+                                                                   f"{max_triangles} para a analise"]}
+    out = analyze_triangles(tris, weld)
+    out["file"] = path
+    return out

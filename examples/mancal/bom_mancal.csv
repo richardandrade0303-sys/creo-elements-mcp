@@ -1,0 +1,32 @@
+﻿pos;item;descricao;qtd;material;massa_unit_g;massa_total_g;dimensoes_mm;volume_mm3;pecas;observacao
+1;Rolamento ISO 15 6205 (25x52x15);rolamento;1;Aço cromo (52100);91.9;91.9;;;/rola_interno, /rola_externo;modelo simplificado
+2;M6 (rosca cosmetica, furo no Ø de broca de macho);rosca;2;;0.0;0.0;;;/mancal;furo roscado cosmetico
+3;e1;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e1_0;
+4;e2;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e2_0;
+5;e3;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e3_0;
+6;e4;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e4_0;
+7;e5;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e5_0;
+8;e6;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e6_0;
+9;e7;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e7_0;
+10;e8;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e8_0;
+11;eixo;peca;1;;0.0;0.0;35x35x240;;/eixo;
+12;graxeira_a;peca;1;;0.0;0.0;11.55x16x10;;/graxeira_a;
+13;graxeira_b;peca;1;;0.0;0.0;11.55x16x10;;/graxeira_b;
+14;mancal;peca;1;;0.0;0.0;124x36x180;;/mancal.1;
+15;p;peca;1;;0.0;0.0;;;/p1;
+16;pino;peca;2;;0.0;0.0;6x20x6;;/pino, /pino.1;
+17;pm6;peca;8;;0.0;0.0;10x10x26;;/pm6_1, /pm6_2, /pm6_3, /pm6_4, /pm6_5, /pm6_6, /pm6_7, /pm6_8;
+18;pm8;peca;4;;0.0;0.0;13x58x13;;/pm8_1, /pm8_2, /pm8_3, /pm8_4;
+19;ret_dir;peca;1;;0.0;0.0;32x32x7;;/ret_dir;
+20;ret_esq;peca;1;;0.0;0.0;32x32x7;;/ret_esq;
+21;rolb_ae;peca;1;;0.0;0.0;52x52x15;;/rolb_ae;
+22;rolb_ai;peca;1;;0.0;0.0;30.4x30.4x15;;/rolb_ai;
+23;rolb_r;peca;12;;0.0;0.0;5.4x5.4x9;;/rolb_r1, /rolb_r10, /rolb_r11, /rolb_r12, /rolb_r2, /rolb_r3, /rolb_r4, /rolb_r5, /rolb_r6, /rolb_r7, /rolb_r8, /rolb_r9;
+24;tampa_dir;peca;1;;0.0;0.0;80x80x12;;/tampa_dir;
+25;tampa_esq;peca;1;;0.0;0.0;80x80x12;;/tampa_esq;
+26;anel_esq;peca;1;;0.0;0.0;33x33x1.2;;/anel_esq;
+27;chaveta;peca;1;;0.0;0.0;6x6x16;;/chaveta;
+28;anel_dir;peca;1;;0.0;0.0;33x33x1.2;;/anel_dir;
+29;e0;peca;1;;0.0;0.0;7.9x7.9x7.94;;/e0_0;
+
+;TOTAL;;52;;;91.9

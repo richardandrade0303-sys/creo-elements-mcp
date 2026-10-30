@@ -387,7 +387,7 @@ def test_run_plan_exports_each_sample_part_separately(monkeypatch, tmp_path):
     monkeypatch.setattr(builder, "_set_wp_z", lambda runner, z, report, axis="z": True)
     plan = parts.build("roller_bearing", {"rollers": 3})
     builder.run_plan(plan, fake_runner, verify=True)
-    assert len(exported) == 3
+    assert len(set(exported)) == 3          # sem arquivo, cada export e repetido uma vez (apos cancelar o comando pendente)
     assert all(c.count('\\"/rolamento_') == 1 for c in exported)
 
 
@@ -876,6 +876,10 @@ def test_asymmetric_chamfer_commands_and_selector():
     for bad in (("chamfer2", 2, 0), ("chamfer_angle", 2, 90), ("chamfer_angle", 2, 0), ("round", 2, 1)):
         with _pt.raises(ValueError):
             recipes.edge_op_setup(bad[0], bad[1], [("all",)], "/b", bad[2])
+    zrc = recipes.edge_pred_lisp([("zrc", 20, 100, 50, 6), ("zrc", 20, 100, 50, 6, 2)])
+    assert zrc.count("(") == zrc.count(")") and "(- x1 100)" in zrc and "(- y2 50)" in zrc and " 36)" in zrc
+    with _pt.raises(ValueError):
+        recipes.edge_pred_lisp([("zrc", 20, 100)])
     sel = recipes.edge_pred_lisp([("edge", 40, 0, 20, 40, 30, 20)])
     assert sel.count("(") == sel.count(")") and sel.count("(or (and") == 1
     with _pt.raises(ValueError):

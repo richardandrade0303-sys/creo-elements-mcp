@@ -378,6 +378,18 @@ def edge_pred_lisp(selectors) -> str:
                     q2 = num(float(sel[3]) ** 2)
                     c += f" (>= (+ (* x1 x1) (* y1 y1)) {q2}) (>= (+ (* x2 x2) (* y2 y2)) {q2})"
             conds.append(f"(and {c})")
+        elif kind == "zrc":                        # ("zrc", nivel, cx, cy, rmax[, rmin]): anel em torno de (cx, cy)
+            if len(sel) < 5:
+                raise ValueError("seletor 'zrc' precisa de nivel, cx, cy, rmax [, rmin]")
+            lvl, cx, cy = num(sel[1]), num(float(sel[2])), num(float(sel[3]))
+            r2 = num(float(sel[4]) ** 2)
+            d1 = f"(+ (* (- x1 {cx}) (- x1 {cx})) (* (- y1 {cy}) (- y1 {cy})))"
+            d2 = f"(+ (* (- x2 {cx}) (- x2 {cx})) (* (- y2 {cy}) (- y2 {cy})))"
+            c = (f"(< (abs (- z1 {lvl})) 0.01) (< (abs (- z2 {lvl})) 0.01) (<= {d1} {r2}) (<= {d2} {r2})")
+            if len(sel) > 5 and float(sel[5]) > 0:
+                q2 = num(float(sel[5]) ** 2)
+                c += f" (>= {d1} {q2}) (>= {d2} {q2})"
+            conds.append(f"(and {c})")
         elif kind == "edge":                       # uma aresta pelos dois extremos (em qualquer ordem)
             a = [num(float(v)) for v in sel[1:7]]
             if len(a) != 6:
